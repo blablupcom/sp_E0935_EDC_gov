@@ -2,7 +2,7 @@
 
 #### IMPORTS 1.0
 
-import os
+import os, json
 import re
 import scraperwiki
 import urllib2
@@ -10,7 +10,8 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 
-#### FUNCTIONS 1.0
+#### FUNCTIONS 1.2
+import requests
 
 def validateFilename(filename):
     filenameregex = '^[a-zA-Z0-9]+_[a-zA-Z0-9]+_[a-zA-Z0-9]+_[0-9][0-9][0-9][0-9]_[0-9QY][0-9]$'
@@ -38,19 +39,19 @@ def validateFilename(filename):
 
 def validateURL(url):
     try:
-        r = urllib2.urlopen(url)
+        r = requests.get(url)
         count = 1
-        while r.getcode() == 500 and count < 4:
+        while r.status_code == 500 and count < 4:
             print ("Attempt {0} - Status code: {1}. Retrying.".format(count, r.status_code))
             count += 1
-            r = urllib2.urlopen(url)
+            r = requests.get(url)
         sourceFilename = r.headers.get('Content-Disposition')
 
         if sourceFilename:
             ext = os.path.splitext(sourceFilename)[1].replace('"', '').replace(';', '').replace(' ', '')
         else:
             ext = os.path.splitext(url)[1]
-        validURL = r.getcode() == 200
+        validURL = r.status_code == 200
         validFiletype = ext.lower() in ['.csv', '.xls', '.xlsx']
         return validURL, validFiletype
     except:
@@ -85,39 +86,30 @@ def convert_mth_strings ( mth_string ):
 
 #### VARIABLES 1.0
 
-entity_id = "E1232_CBC_gov"
-url = "https://www.dorsetforyou.gov.uk/your-council/about-your-council/budgets-and-spending/open-data-and-transparency/payments-to-suppliers-christchurch-borough-council.aspx"
+entity_id = "E0935_EDC_gov"
+url = "https://www.eden.gov.uk/your-council/council-business/council-finances/council-spending-over-500/"
 errors = 0
 data = []
 
-
 #### READ HTML 1.0
 
-html = urllib2.urlopen(url)
-soup = BeautifulSoup(html, 'lxml')
+html = requests.get(url)
+soup = BeautifulSoup(html.text, 'lxml')
 
 #### SCRAPE DATA
 
-links = soup.find('main', id='main').find_all('li')
-for link in links:
-    if 'http' not in link.find('a')['href']:
-        url = 'https://www.dorsetforyou.gov.uk/' + link.find('a')['href'][1:]
+blocks = soup.find('table', attrs={'summary':'Council spending over £500'}).find_all('tr')[1:]
+for block in blocks:
+    if 'http' not in block.find('a')['href']:
+        url = 'https://www.eden.gov.uk' + block.find('a')['href']
     else:
-        url = link.find('a')['href'][1:]
-    if '.xlsx' in url or '.xls' in url or '.csv' in url:
-        file_name = link.text.strip()
-        csvYr = link.text.strip()[-4:]
-        if 'Q4' in file_name:
-            csvMth = 'Q1'
-        if 'Q3' in file_name:
-            csvMth = 'Q4'
-        if 'Q2' in file_name:
-            csvMth = 'Q3'
-        if 'Q1' in file_name:
-            csvMth = 'Q2'
+        url = block.find('a')['href']
+    file_name = block.text
+    if '.csv' in url:
+        csvMth = file_name.split()[1][:3]
+        csvYr = file_name.split()[0][:4]
         csvMth = convert_mth_strings(csvMth.upper())
         data.append([csvYr, csvMth, url])
-
 
 #### STORE DATA 1.0
 
